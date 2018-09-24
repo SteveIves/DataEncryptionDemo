@@ -1,0 +1,111 @@
+;;*****************************************************************************
+;;
+;; File:        GetEncryptionKeys.dbl
+;;
+;; Description: A Traditional Synergy function to obtain the various keys
+;;              required when encrypting data.
+;;
+;; Author:      Steve Ives, Synergex Professional Services Group
+;;
+;;*****************************************************************************
+;;
+;; Copyright (c) 2018, Synergex International, Inc.
+;; All rights reserved.
+;;
+;; Redistribution and use in source and binary forms, with or without
+;; modification, are permitted provided that the following conditions are met:
+;;
+;; * Redistributions of source code must retain the above copyright notice,
+;;   this list of conditions and the following disclaimer.
+;;
+;; * Redistributions in binary form must reproduce the above copyright notice,
+;;   this list of conditions and the following disclaimer in the documentation
+;;   and/or other materials provided with the distribution.
+;;
+;; THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+;; AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+;; IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+;; ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+;; LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+;; CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+;; SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+;; INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+;; CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+;; ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+;; POSSIBILITY OF SUCH DAMAGE.
+;;
+;;*****************************************************************************
+
+subroutine GetEncryptionKeys
+	required out password,			string
+	required out salt,				string
+	required out iv,				string
+	endparams
+
+	.define D_SALT_IV_FILE			"KEYDATA:salt_iv.txt"
+
+	static record
+		encryptionKey,				string
+		encryptionSalt,				string
+		encryptionIv,				string
+	endrecord
+
+proc
+
+	;;If necessary, get the encryption key
+	if (encryptionKey==^null || encryptionKey.Length==0)
+	begin
+		;;In this example we're simply using a hard-coded GUID as our encryption key.
+		;;In the real world you would want to use some secure mechanism to store your encryption key.
+		;;This value is the password to all of your encrypted data. Without it you lose access to
+		;;your data, and if someone has the key, they can unencrypt the data.
+		;;
+		;;DO NOT DO IT THIS WAY IN A PRODUCTION ENVIRONMENT!!!
+		;;
+		encryptionKey = "80CDE934-3592-4221-9781-8AD11C18B61A"
+	end
+
+	;;If necessary, get the salt and IV values
+	if (encryptionSalt==^null || encryptionSalt.Length==0 || encryptionIv==^null || encryptionIv.Length==0 )
+	begin
+		data saltValue,		a8
+		data ivValue,		a16
+		data saltLength,	i4
+		data ivLength,		i4
+		data tmpch,			i4
+
+		;;Do we already have salt and IV values saved in a file?
+		try
+		begin
+			;;Yes, read the values from the file
+			open(tmpch=0,i,D_SALT_IV_FILE)
+			reads(tmpch,saltValue)
+			reads(tmpch,ivValue)
+		end
+		catch (ex, @NoFileFoundException)
+		begin
+			;;No, get new values and save them to the file
+			xcall data_saltiv(DC_AES256,saltValue,saltLength,ivValue,ivLength)
+			open(tmpch=0,o,D_SALT_IV_FILE)
+			writes(tmpch,saltValue)
+			writes(tmpch,ivValue)
+		end
+		finally
+		begin
+			if (tmpch && %chopen(tmpch))
+				close tmpch
+		end
+		endtry
+
+		encryptionSalt = saltValue
+		encryptionIv = ivValue
+
+	end
+
+	password = encryptionKey
+	salt = encryptionSalt
+	iv = encryptionIv
+
+	xreturn
+
+endsubroutine
